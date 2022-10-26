@@ -31,7 +31,11 @@
 #include <term.h>
 #include <utils.h>
 
+#include <spi_driver.h>
+
 #include "display_common.h"
+
+#define ENABLE_INIT_SPI_BUS CONFIG_AVM_DISPLAY_INIT_SPI_BUS
 
 #define MISO_IO_NUM CONFIG_AVM_DISPLAY_MISO_IO_NUM
 #define MOSI_IO_NUM CONFIG_AVM_DISPLAY_MOSI_IO_NUM
@@ -86,6 +90,21 @@ bool spi_display_parse_config(struct SPIDisplayConfig *spi_config, term opts, Gl
 {
     bool ok = display_common_gpio_from_opts(
         opts, ATOM_STR("\xB", "spi_cs_gpio"), &spi_config->cs_gpio, global);
+
+    if (!ok) {
+        return false;
+    }
+
+#if ENABLE_INIT_SPI_BUS == false
+    int spi_host_atom_index = globalcontext_insert_atom(global, ATOM_STR("\x8", "spi_host"));
+    term spi_host_atom = term_from_atom_index(spi_host_atom_index);
+    term spi_port = interop_proplist_get_value(opts, spi_host_atom);
+
+    ok = spi_driver_get_peripheral(spi_port, &spi_config->host_dev, global);
+#else
+    spi_config->host_dev = HSPI_HOST;
+#endif
+
     return ok;
 }
 
@@ -104,7 +123,7 @@ bool spi_display_init(struct SPIDisplay *spi_disp, struct SPIDisplayConfig *spi_
         .queue_size = 1
     };
 
-    esp_err_t ret = spi_bus_add_device(HSPI_HOST, &devcfg, &spi_disp->handle);
+    esp_err_t ret = spi_bus_add_device(spi_config->host_dev, &devcfg, &spi_disp->handle);
     ESP_ERROR_CHECK(ret);
 
     return true;
